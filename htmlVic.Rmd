@@ -1,0 +1,125 @@
+---
+title: "Final Project"
+author: "Victoria Tellier-Terawaki"
+date: "24/05/2020"
+output: html_document
+---
+
+# Course Project Prediction
+For this project, we must predict the manner in which they did the exercise (“classe” variable). To do so, we will follow the strategy of the course: 
+1.	Find the appropriate question for the project
+2.	Collect the best input data
+3.	Use measured characteristics to build features
+4.	Use the machine learning algorithms
+5.	Estimate the parameters of those algorithms
+6.	Evaluate the algorithm on the new data
+
+
+
+# Installing libraries
+First, we load the caret and ggplot2 libraries and the data (csv files).
+
+```{r}
+library(caret)
+library(ggplot2)
+```
+
+
+
+# Loading data
+I used na.string to specify which strings represent missing values, in this case we have “NA”, “ “, “#DIV/0!”.
+```{r}
+Training<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", header=TRUE,sep=",",na.strings=c("","NA","#DIV/0!"))
+Testing<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", header=TRUE,sep=",", na.strings=c("","NA","#DIV/0!"))
+```
+
+
+
+
+# Cleaning data
+Now we can start cleaning the data by removing variables that I believe to be not good predictors: NA values and little variables (near zero variables). To do so, I only keep columns with zero NA value, and we take off near zero variables. Looking at data, we can go further and remove the first variable that I believe useless to predict my model (“X”).
+
+## Removing empty columns
+```{r}
+Training<-Training[,colSums(is.na(Training),na.rm=FALSE)==0]
+dim(Training)
+```
+
+## Removing zero variance variables
+```{r}
+nsv<-nearZeroVar(Training,saveMetrics = FALSE)
+Training<-Training[,-nsv]
+```
+
+## Removing the first column
+```{r}
+Training<-Training[,-c(1)]
+```
+
+
+# Partitioning data
+Once all the bad predictors have been removed, we can do the data partition with CreateDataPartition. The idea is to have two different sets, one to build the model and the other to test the model and see how it adapts to an independent set. But first I set a seed so that I get the same random numbers generated each time (in order to have similar results each time the algorithm is run). We partition the training data into a training (to build the model) and a test set (to test the model) using the classe type. The repartition of the data depends of the size of the data set. As it is 19622, I believe data partition should follow the following one: 70% of the data to train the model and 30% to test it. Two subsets are then creating, each one holding the training or test data.
+
+
+```{r}
+set.seed(15000)
+inTrain<-createDataPartition(y=Training$classe,p=0.7, list = FALSE)
+Train<-Training[inTrain,]
+Test<-Training[-inTrain,]
+```
+
+# Prediction model constructions
+
+At this stage, I can start using machine learning algorithms. I try to fit different models. To do so, I use the train command and I try to predict the classe variable using all the other variables (tilde and the dot). I build the training model on the training data set and I tell which method I want to use (Rf, gbm, rpart …). For gbm, we put verbose equal to false to do boosting with trees. I use cross validation for the two models. Here the cross validation consisted in splitting data into 4 folds. The more folds there are, the less biased model we get but it takes more time to run and large number of folds can lead to overfitting. Thus, I decided to limit it to 4 folds.
+
+```{r}
+control <- trainControl(method="cv", number=4)
+```
+
+## Random forest with Cross Validation 
+```{r}
+modelFit<- train(classe ~ ., data=Train, method="rf", trControl=control, ntree=100,)
+modelFit
+```
+
+## Boosting with Cross Validation
+```{r}
+modelFit_2 <- train(classe ~ ., data=Train, method="gbm", trControl=control, verbose=FALSE, )
+modelFit_2
+```
+
+
+
+
+
+
+# Predictions
+
+Now I want to know if the models work well, and if so, which one is the most accurate. To do so, we predict on the testing sample. I used the predict function, and it will display the predicting class for each variable. We can also use the confusion matrix. Boosting and Random Forest are the most accurate models. I will use the model with the highest accuracy (and so the lower out of sample error) for my prediction.
+
+```{r}
+prediction <- predict(modelFit, newdata=Test)
+conf<-confusionMatrix(factor(prediction),factor(Test$classe))
+x<-conf$overall['Accuracy']
+
+prediction_2 <- predict(modelFit_2, newdata=Test)
+conf_2<-confusionMatrix(factor(prediction_2),factor(Test$classe))
+y<-conf_2$overall['Accuracy']
+```
+
+# Course project prediction
+To select the most accurate model, I use the command “if” and I applied the selected model to the new data set (with 20 observations). 
+
+```{r}
+if(x<y){
+  print(predict(modelFit_2, newdata=Testing))
+  print("GBM")
+}else {
+  print(predict(modelFit, newdata=Testing))
+  print("randomforest")}
+
+```
+
+# Conclusion
+The out of sample error is the error you get when you use the algorithm on a new dataset, here the 20 observations. For the test subset of the training data set, I got an out of sample error of 0.24 % (100-99.76), which is pretty low. Thus, for this smaller new dataset we expect a similar low error rate. Using my prediction model to predict 20 different test cases, I get : B A B A A E D B A A B C B A E E A B B B. 
+Also, I used cross validation to estimate the accuracy and so the out of sample error of the models. It consisted in using only the training set to build the algorithm, splitting the training set into two subsets (training and testing), building models on the training one before evaluating it on the test subset, repeating the partitioning data process (depending on the number of folds) and averaging the results, and finally applying the best model to the original test set.
